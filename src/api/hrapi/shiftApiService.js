@@ -64,7 +64,7 @@ const shiftApiService = {
   // Employee Shift Assignments
   fetchEmployeeAssignments: async (params = {}) => {
     try {
-      const response = await api.get('/employee-shift-assignments/', { params });
+      const response = await api.get('/employee-shifts/', { params });
       return response.data;
     } catch (error) {
       return handleApiError(error);
