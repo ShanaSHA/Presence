@@ -1,52 +1,147 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '../../components/empcomponents/empheader';
 import Sidebar from '../../components/empcomponents/empSidear';
+import dashboardAPI from '../../api/empapi/empdash';
 
 const EmpDashboard = () => {
   const [selectedMonth, setSelectedMonth] = useState('Jan');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  // Mock data for the donut chart
-  const attendanceData = {
-    present: 24,
-    late: 2,
-    absent: 4
+  // State for all data
+  const [dashboardData, setDashboardData] = useState({
+    check_in: "-- : --",
+    check_out: "-- : --",
+    late: false,
+    overtime_today: "0 hours",
+    total_overtime: "0 hours",
+    attendance_percentage: 0,
+    date: "",
+    attendance_graph_data: []
+  });
+  
+  const [shiftData, setShiftData] = useState([]);
+  const [colleaguesData, setColleaguesData] = useState([]);
+
+  // Calculate attendance stats from graph data
+  const calculateAttendanceStats = (graphData) => {
+    const present = graphData.filter(item => item.status === 1).length;
+    const total = graphData.length;
+    const absent = total - present;
+    
+    return {
+      present,
+      late: dashboardData.late ? 1 : 0,
+      absent,
+      total
+    };
   };
-  
-  // Mock employee data
-  const employees = [
-    { id: 1, name: "Sarah Johnson", status: "Present", color: "#8b5cf6" },
-    { id: 2, name: "Emma Thompson", status: "Present", color: "#ec4899" },
-    { id: 3, name: "Olivia Williams", status: "Absent", color: "#f97316" },
-    { id: 4, name: "Sophia Davis", status: "Present", color: "#14b8a6" },
-    { id: 5, name: "Michael Brown", status: "Absent", color: "#3b82f6" }
-  ].map(emp => ({
-    ...emp,
-    firstLetter: emp.name.charAt(0)  // Extracts the first letter
-  }));
-  
-  // Calculate total days for percentages
-  const totalDays = attendanceData.present + attendanceData.late + attendanceData.absent;
-  const presentPercentage = Math.round((attendanceData.present / totalDays) * 100);
-  
-  // Calculate the stroke dash array and offset for each segment
+
+  // Fetch all data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch dashboard data
+        const dashboardResponse = await dashboardAPI.getDashboardData();
+        setDashboardData(dashboardResponse);
+        
+        // Fetch shift data
+        const shiftResponse = await dashboardAPI.getShiftData();
+        setShiftData(shiftResponse);
+        
+        // Fetch colleagues data
+        const colleaguesResponse = await dashboardAPI.getShiftColleagues();
+        setColleaguesData(colleaguesResponse);
+        
+      } catch (err) {
+        setError(err.message || 'Failed to load dashboard data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Format colleagues data for display
+  const formatColleaguesData = (colleagues) => {
+    const colors = ["#8b5cf6", "#ec4899", "#f97316", "#14b8a6", "#3b82f6"];
+    
+    return colleagues.map((colleague, index) => ({
+      id: colleague.id,
+      name: colleague.employee_name,
+      status: "Present", // You'll need to determine this from your data
+      color: colors[index % colors.length],
+      firstLetter: colleague.employee_name.charAt(0)
+    }));
+  };
+
+  // Calculate the donut chart segments
   const calculateDonutSegment = (value, total, startOffset = 0) => {
-    const circumference = 2 * Math.PI * 40; // 40 is the radius
+    const circumference = 2 * Math.PI * 40;
     const segmentLength = (value / total) * circumference;
     return {
       strokeDasharray: `${segmentLength} ${circumference - segmentLength}`,
       strokeDashoffset: -startOffset
     };
   };
-  
-  // Calculate segments
-  const presentSegment = calculateDonutSegment(attendanceData.present, totalDays);
-  const lateSegment = calculateDonutSegment(attendanceData.late, totalDays, 
-    (attendanceData.present / totalDays) * (2 * Math.PI * 40));
-  const absentSegment = calculateDonutSegment(attendanceData.absent, totalDays,
-    ((attendanceData.present + attendanceData.late) / totalDays) * (2 * Math.PI * 40));
-  
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className="flex-1 p-6 transition-all duration-300">
+          <Header title="Dashboard" />
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className="flex-1 p-6 transition-all duration-300">
+          <Header title="Dashboard" />
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <p>{error}</p>
+            <button 
+              className="font-bold underline ml-2"
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate attendance stats
+  const attendanceStats = calculateAttendanceStats(dashboardData.attendance_graph_data);
+  const totalDays = attendanceStats.present + attendanceStats.late + attendanceStats.absent;
+  const presentPercentage = Math.round((attendanceStats.present / totalDays) * 100);
+
+  // Calculate donut segments
+  const presentSegment = calculateDonutSegment(attendanceStats.present, totalDays);
+  const lateSegment = calculateDonutSegment(attendanceStats.late, totalDays, 
+    (attendanceStats.present / totalDays) * (2 * Math.PI * 40));
+  const absentSegment = calculateDonutSegment(attendanceStats.absent, totalDays,
+    ((attendanceStats.present + attendanceStats.late) / totalDays) * (2 * Math.PI * 40));
+
+  // Format colleagues data
+  const employees = formatColleaguesData(colleaguesData);
+
+  // Get current shift data (assuming first shift is current)
+  const currentShift = shiftData.length > 0 ? shiftData[0] : null;
+
   return (
     <div className="flex min-h-screen bg-gray-50 font-popins">
       <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
@@ -66,7 +161,9 @@ const EmpDashboard = () => {
                   </svg>
                 </div>
                 <p className="text-gray-500 font-medium">Check In</p>
-                <p className="text-2xl font-bold text-gray-800">9:00 AM</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {dashboardData.check_in === "Not Available" ? "-- : --" : dashboardData.check_in}
+                </p>
               </div>
               
               {/* Check Out */}
@@ -77,7 +174,9 @@ const EmpDashboard = () => {
                   </svg>
                 </div>
                 <p className="text-gray-500 font-medium">Check Out</p>
-                <p className="text-2xl font-bold text-gray-800">-- : --</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {dashboardData.check_out === "Not Available" ? "-- : --" : dashboardData.check_out}
+                </p>
               </div>
               
               {/* Over Time */}
@@ -88,7 +187,7 @@ const EmpDashboard = () => {
                   </svg>
                 </div>
                 <p className="text-gray-500 font-medium">Over Time</p>
-                <p className="text-2xl font-bold text-gray-800">0 hrs</p>
+                <p className="text-2xl font-bold text-gray-800">{dashboardData.overtime_today}</p>
               </div>
               
               {/* Late Hours */}
@@ -99,21 +198,26 @@ const EmpDashboard = () => {
                   </svg>
                 </div>
                 <p className="text-gray-500 font-medium">Late Hours</p>
-                <p className="text-2xl font-bold text-gray-800">0 hrs</p>
+                <p className="text-2xl font-bold text-gray-800">
+                  {dashboardData.late ? "1 hr" : "0 hrs"}
+                </p>
               </div>
             </div>
             
             {/* Shift Card */}
-            <div className="bg-gradient-to-r from-gray-600 to-gray-600 rounded-xl p-6 shadow-md text-white">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-white text-opacity-80 font-medium">Current Schedule</p>
-                  <h3 className="text-2xl font-bold mt-1">Morning Shift</h3>
-                  <p className="mt-2 text-white text-opacity-80">9:00 AM - 5:00 PM</p>
+            {currentShift && (
+              <div className="bg-gradient-to-r from-gray-600 to-gray-600 rounded-xl p-6 shadow-md text-white">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-white text-opacity-80 font-medium">Current Schedule</p>
+                    <h3 className="text-2xl font-bold mt-1">{currentShift.shift_type }</h3>
+                    <p className="mt-2 text-white text-opacity-80">
+                      {currentShift.shift.start_time} - {currentShift.shift.end_time}
+                    </p>
+                  </div>
                 </div>
-               
               </div>
-            </div>
+            )}
           </div>
           
           {/* Right panel - Donut chart */}
@@ -132,7 +236,7 @@ const EmpDashboard = () => {
                     cy="50" 
                     r="40" 
                     fill="none" 
-                    stroke="gray" 
+                    stroke="#8b5cf6" 
                     strokeWidth="12" 
                     style={presentSegment} 
                   />
@@ -143,7 +247,7 @@ const EmpDashboard = () => {
                     cy="50" 
                     r="40" 
                     fill="none" 
-                    stroke="#9a9a9a" 
+                    stroke="#f59e0b" 
                     strokeWidth="12" 
                     style={lateSegment} 
                   />
@@ -154,7 +258,7 @@ const EmpDashboard = () => {
                     cy="50" 
                     r="40" 
                     fill="none" 
-                    stroke="#e9e9e9" 
+                    stroke="#ef4444" 
                     strokeWidth="12" 
                     style={absentSegment} 
                   />
@@ -167,16 +271,16 @@ const EmpDashboard = () => {
             </div>
             <div className="flex justify-center space-x-6 mt-4">
               <div className="flex items-center">
-                <div className="w-4 h-4 rounded-full bg-gray-500 mr-2"></div>
-                <span className="text-gray-600">Present ({attendanceData.present} days)</span>
+                <div className="w-4 h-4 rounded-full bg-purple-500 mr-2"></div>
+                <span className="text-gray-600">Present ({attendanceStats.present} days)</span>
               </div>
               <div className="flex items-center">
-                <div className="w-4 h-4 rounded-full bg-[#9a9a9a] mr-2"></div>
-                <span className="text-gray-600">Late ({attendanceData.late} days)</span>
+                <div className="w-4 h-4 rounded-full bg-yellow-500 mr-2"></div>
+                <span className="text-gray-600">Late ({attendanceStats.late} days)</span>
               </div>
               <div className="flex items-center">
-                <div className="w-4 h-4 rounded-full bg-[#e9e9e9] mr-2"></div>
-                <span className="text-gray-600">Absent ({attendanceData.absent} days)</span>
+                <div className="w-4 h-4 rounded-full bg-red-500 mr-2"></div>
+                <span className="text-gray-600">Absent ({attendanceStats.absent} days)</span>
               </div>
             </div>
           </div>
@@ -200,16 +304,18 @@ const EmpDashboard = () => {
           
           <div className="flex space-x-4 overflow-x-auto py-2">
             {employees.map(employee => (
-              <div key={employee.id} className="flex flex-col items-center space-y-2">
+              <div key={employee.id} className="flex flex-col items-center space-y-2 min-w-[70px]">
                 <div 
                   className="flex items-center justify-center w-14 h-14 rounded-full text-white font-semibold text-lg"
                   style={{ backgroundColor: employee.color }}
                 >
                   {employee.firstLetter}
                 </div>
-                <p className="text-sm font-medium text-gray-700">{employee.name.split(' ')[0]}</p>
+                <p className="text-sm font-medium text-gray-700 truncate w-full text-center">
+                  {employee.name.split(' ')[0]}
+                </p>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  employee.status === 'Active' 
+                  employee.status === 'Present' 
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-red-100 text-red-800'
                 }`}>
@@ -222,7 +328,7 @@ const EmpDashboard = () => {
         
         {/* Modal Popup for Employee Status */}
         {isModalOpen && (
-          <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 animate-fade-in-down">
               <div className="flex justify-between items-center p-5 border-b border-gray-200">
                 <h3 className="text-xl font-semibold text-gray-800">Employee Status</h3>
@@ -251,7 +357,7 @@ const EmpDashboard = () => {
                           <p className="font-medium text-gray-800">{employee.name}</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          employee.status === 'Active' 
+                          employee.status === 'Present' 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>

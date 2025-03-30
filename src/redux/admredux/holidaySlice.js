@@ -1,26 +1,51 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import * as api from '../../api/adminapi/leavepolicy';
+import { BASE_URL } from '../../api/config';
 
-// Async thunks for leave types
-export const addLeaveType = createAsyncThunk(
-  'holidays/addLeaveType',
-  async (leaveTypeData, { rejectWithValue }) => {
+// Function to get the authentication token
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("accessToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+// Async thunks for API operations
+export const fetchHolidays = createAsyncThunk(
+  'holidays/fetchHolidays',
+  async (year, { rejectWithValue }) => {
     try {
-      const response = await api.createLeaveType(leaveTypeData);
-      return response;
+      const url = year 
+        ? `${BASE_URL}/public-holidays/?year=${year}` 
+        : `${BASE_URL}/public-holidays/`;
+      
+      const response = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
     }
   }
 );
 
-// Async thunks for holidays
-export const fetchHolidays = createAsyncThunk(
-  'holidays/fetchHolidays',
-  async (year, { rejectWithValue }) => {
+export const fetchLeaveTypes = createAsyncThunk(
+  'holidays/fetchLeaveTypes',
+  async (_, { rejectWithValue }) => {
     try {
-      const response = await api.fetchHolidays(year);
-      return response;
+      const response = await fetch(`${BASE_URL}/policyleavetype/`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -31,10 +56,31 @@ export const addHoliday = createAsyncThunk(
   'holidays/addHoliday',
   async (holidayData, { rejectWithValue }) => {
     try {
-      const response = await api.createHoliday(holidayData);
-      return response;
+      const response = await fetch(`${BASE_URL}/public-holidays/`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(holidayData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
+    }
+  }
+);
+export const fetchCommunities = createAsyncThunk(
+  'hrUsers/fetchCommunities',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await getCommunities();
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message || 'Failed to fetch communities');
     }
   }
 );
@@ -43,8 +89,18 @@ export const updateHoliday = createAsyncThunk(
   'holidays/updateHoliday',
   async ({ id, holidayData }, { rejectWithValue }) => {
     try {
-      const response = await api.updateHoliday({ ...holidayData, id });
-      return response;
+      const response = await fetch(`${BASE_URL}/public-holidays/${id}/`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(holidayData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -55,7 +111,16 @@ export const deleteHoliday = createAsyncThunk(
   'holidays/deleteHoliday',
   async (id, { rejectWithValue }) => {
     try {
-      await api.deleteHoliday(id);
+      const response = await fetch(`${BASE_URL}/public-holidays/${id}/`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
       return id;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -63,13 +128,22 @@ export const deleteHoliday = createAsyncThunk(
   }
 );
 
-// Async thunks for leave types
-export const fetchLeaveTypes = createAsyncThunk(
-  'holidays/fetchLeaveTypes',
-  async (_, { rejectWithValue }) => {
+export const addLeaveType = createAsyncThunk(
+  'holidays/addLeaveType',
+  async (leaveTypeData, { rejectWithValue }) => {
     try {
-      const response = await api.fetchLeaveTypes();
-      return response;
+      const response = await fetch(`${BASE_URL}/policyleavetype/`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(leaveTypeData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return rejectWithValue(`Server error: ${response.status} ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -81,99 +155,46 @@ const holidaySlice = createSlice({
   initialState: {
     holidays: [],
     leaveTypes: [],
-    loading: false,
-    leaveTypesLoading: false,
+    status: 'idle',
     error: null,
-    leaveTypesError: null,
   },
   reducers: {},
   extraReducers: (builder) => {
     builder
-      // Fetch holidays
+      // Fetch Holidays
       .addCase(fetchHolidays.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+        state.status = 'loading';
       })
       .addCase(fetchHolidays.fulfilled, (state, action) => {
+        state.status = 'succeeded';
         state.holidays = action.payload;
-        state.loading = false;
       })
       .addCase(fetchHolidays.rejected, (state, action) => {
-        state.loading = false;
+        state.status = 'failed';
         state.error = action.payload;
       })
-
-      // Add holiday
-      .addCase(addHoliday.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+      // Fetch Leave Types
+      .addCase(fetchLeaveTypes.fulfilled, (state, action) => {
+        state.leaveTypes = action.payload;
       })
+      // Add Holiday
       .addCase(addHoliday.fulfilled, (state, action) => {
         state.holidays.push(action.payload);
-        state.loading = false;
       })
-      .addCase(addHoliday.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-
-      // Update holiday
-      .addCase(updateHoliday.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Update Holiday
       .addCase(updateHoliday.fulfilled, (state, action) => {
-        const index = state.holidays.findIndex((holiday) => holiday.id === action.payload.id);
+        const index = state.holidays.findIndex(h => h.id === action.payload.id);
         if (index !== -1) {
           state.holidays[index] = action.payload;
         }
-        state.loading = false;
       })
-      .addCase(updateHoliday.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-
-      // Delete holiday
-      .addCase(deleteHoliday.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
+      // Delete Holiday
       .addCase(deleteHoliday.fulfilled, (state, action) => {
-        state.holidays = state.holidays.filter((holiday) => holiday.id !== action.payload);
-        state.loading = false;
+        state.holidays = state.holidays.filter(h => h.id !== action.payload);
       })
-      .addCase(deleteHoliday.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload;
-      })
-
-      // Fetch leave types
-      .addCase(fetchLeaveTypes.pending, (state) => {
-        state.leaveTypesLoading = true;
-        state.leaveTypesError = null;
-      })
-      .addCase(fetchLeaveTypes.fulfilled, (state, action) => {
-        state.leaveTypes = action.payload;
-        state.leaveTypesLoading = false;
-      })
-      .addCase(fetchLeaveTypes.rejected, (state, action) => {
-        state.leaveTypesLoading = false;
-        state.leaveTypesError = action.payload;
-      })
-
-      // Add leave type
-      .addCase(addLeaveType.pending, (state) => {
-        state.leaveTypesLoading = true;
-        state.leaveTypesError = null;
-      })
+      // Add Leave Type
       .addCase(addLeaveType.fulfilled, (state, action) => {
         state.leaveTypes.push(action.payload);
-        state.leaveTypesLoading = false;
-      })
-      .addCase(addLeaveType.rejected, (state, action) => {
-        state.leaveTypesLoading = false;
-        state.leaveTypesError = action.payload;
       });
   },
 });

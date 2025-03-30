@@ -1,119 +1,125 @@
-// src/api/adminapi/leavepolicy.js
 
-import axios from 'axios';
+import axios from "axios";
+import { BASE_URL } from "../config"; // Backend URL
 
-// Base URL for API requests
-import {BASE_URL} from "../config"
-// Create axios instance with default config
-const apiClient = axios.create({
+// Function to get authorization headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("accessToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+// ✅ Refresh Access Token
+const refreshAccessToken = async () => {
+  const refreshToken = localStorage.getItem("refreshToken");
+  if (!refreshToken) return null; // No refresh token available
+
+  try {
+    const response = await axios.post(`${BASE_URL}/token/refresh/`, { refresh: refreshToken });
+    localStorage.setItem("accessToken", response.data.access); // Store new access token
+    return response.data.access;
+  } catch (error) {
+    console.error("Failed to refresh token:", error);
+    localStorage.clear(); // Clear tokens on failure
+    return null;
+  }
+};
+
+// Create axios instance
+const api = axios.create({
   baseURL: BASE_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
+  timeout: 10000, // Timeout to prevent hanging requests
 });
 
-// Add authorization token to requests
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+// ✅ Add Axios Interceptor to Refresh Token on Expired Access
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response && error.response.status === 401) {
+      const newAccessToken = await refreshAccessToken();
+      if (newAccessToken) {
+        error.config.headers["Authorization"] = `Bearer ${newAccessToken}`;
+        return axios(error.config); // Retry failed request with new token
+      }
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
+    return Promise.reject(error);
+  }
 );
 
-// Holiday API calls
-const fetchHolidays = async () => {
+// ✅ Utility function to handle API errors
+const handleApiError = (error) => {
+  console.error("API Error:", error?.response?.data || error.message);
+  throw new Error(error?.response?.data?.message || "Something went wrong");
+};
+
+// ✅ Fetch public holidays by year
+export const fetchHolidays = async (year) => {
   try {
-    const response = await apiClient.get('/public-holidays/');
+    const response = await api.get("/public-holidays/", { params: { year }, headers: getAuthHeaders() });
     return response.data;
   } catch (error) {
-    console.error('Error fetching holidays:', error);
-    throw error;
+    handleApiError(error);
   }
 };
 
-const createHoliday = async (holidayData) => {
-  // Transform frontend data to match backend expectations
-  const transformedData = {
-    name: holidayData.name,
-    date: holidayData.date,
-    description: holidayData.description || '',
-    status: holidayData.status.toLowerCase(),
-    leave_type: holidayData.type, // Backend expects leave_type
-    community: holidayData.community || 'Other'
-  };
-
+// ✅ Create a new holiday
+export const createHoliday = async (holidayData) => {
   try {
-    const response = await apiClient.post('/public-holidays/', transformedData);
+    const response = await api.post(
+      "/public-holidays/",
+      {
+        name: holidayData.name,
+        date: holidayData.date,
+        status: holidayData.status.toLowerCase(),
+        leave_type: holidayData.type,
+        community: holidayData.community || "Other",
+        description: holidayData.description || "",
+      },
+      { headers: getAuthHeaders() }
+    );
     return response.data;
   } catch (error) {
-    console.error('Error creating holiday:', error);
-    throw error;
+    handleApiError(error);
   }
 };
 
-const updateHoliday = async (holidayData) => {
-  // Transform frontend data to match backend expectations
-  const transformedData = {
-    name: holidayData.name,
-    date: holidayData.date,
-    description: holidayData.description || '',
-    status: holidayData.status.toLowerCase(),
-    leave_type: holidayData.type, // Backend expects leave_type
-    community: holidayData.community || 'Other'
-  };
-
+// ✅ Fetch community list
+export const getCommunities = async () => {
   try {
-    const response = await apiClient.put(`/public-holidays/${holidayData.id}/`, transformedData);
+    const response = await api.get("/hrcommunity/", { headers: getAuthHeaders() });
     return response.data;
   } catch (error) {
-    console.error('Error updating holiday:', error);
-    throw error;
+    handleApiError(error);
   }
 };
 
-const deleteHoliday = async (id) => {
+// ✅ Fetch leave types
+export const fetchLeaveTypes = async () => {
   try {
-    await apiClient.delete(`/public-holidays/${id}/`);
-    return id;
-  } catch (error) {
-    console.error('Error deleting holiday:', error);
-    throw error;
-  }
-};
-
-// Leave Types API calls
-const fetchLeaveTypes = async () => {
-  try {
-    const response = await apiClient.get('/leave-types/');
+    const response = await api.get("/policyleavetype/", { headers: getAuthHeaders() });
     return response.data;
   } catch (error) {
-    console.error('Error fetching leave types:', error);
-    throw error;
+    handleApiError(error);
   }
 };
 
-const createLeaveType = async (leaveTypeData) => {
+// ✅ Create a new leave type
+export const createLeaveType = async (leaveTypeData) => {
   try {
-    const response = await apiClient.post('/policyleavetype/', {
-      leave: leaveTypeData.name, // Match backend field name
-      color: leaveTypeData.color
-    });
+    const response = await api.post(
+      "/policyleavetype/",
+      {
+        leave: leaveTypeData.name,
+        color: leaveTypeData.color,
+      },
+      { headers: getAuthHeaders() }
+    );
     return response.data;
   } catch (error) {
-    console.error('Error creating leave type:', error);
-    throw error;
+    handleApiError(error);
   }
 };
 
-export {
-  fetchHolidays,
-  createHoliday,
-  updateHoliday,
-  deleteHoliday,
-  fetchLeaveTypes,
-  createLeaveType
-};
+export default api;

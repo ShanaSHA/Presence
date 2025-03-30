@@ -1,81 +1,84 @@
 import axios from "axios";
+import { BASE_URL } from "../config";
 
-import {BASE_URL} from "../config" // Your backend URL
+// Create axios instance with base configuration
+const apiClient = axios.create({
+  baseURL: BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-// ✅ Helper Function: Get Authorization Headers
-const getAuthHeaders = () => {
+// Add request interceptor to include token
+apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("accessToken");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
-// ✅ Fetch HR Users (GET Request)
-export const fetchHrUsers = async () => {
-  try {
-    console.log("📤 Fetching HR Users...");
-
-    const response = await axios.get(`${BASE_URL}/hr-list/`, {
-      headers: getAuthHeaders(),
-    });
-
-    console.log("✅ HR Users Fetched Successfully:", response.data);
-    return response.data;
-  } catch (error) {
-    console.error("❌ Error Fetching HR Users:", error.response?.data || error.message);
-
-    // Handle Unauthorized (401) - Token might be expired
+// Error handling interceptor
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
     if (error.response?.status === 401) {
-      alert("❌ Unauthorized! Please log in again.");
+      // Handle unauthorized (token expired)
       localStorage.clear();
       window.location.href = "/";
     }
+    return Promise.reject(error);
+  }
+);
 
-    return [];
+export const fetchHrUsers = async () => {
+  try {
+    const response = await apiClient.get("/hr-list/");
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching HR users:", error);
+    throw error;
   }
 };
 
-// ✅ Add HR User (POST Request)
-export const addHrUser = async (userData) => {
+export const getDesignations = async () => {
   try {
-    // ✅ Ensure the request body matches backend expectations
-    const requestBody = {
-      email: userData.email,
-      password: userData.password || "", // Send empty string if not provided
-      role: userData.role.toLowerCase(), // Convert role to lowercase
-      department: userData.department,
-      name: userData.name,
-    };
-
-    console.log("📤 Adding HR User:", requestBody); // Debugging log
-
-    const response = await axios.post(`${BASE_URL}/userview/`, requestBody, {
-      headers: {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      },
-    });
-
-    console.log("✅ HR User Added Successfully:", response.data);
+    const response = await apiClient.get("/hrdesignation/");
     return response.data;
   } catch (error) {
-    console.error("❌ Error Adding HR User:", error.response?.data || error.message);
+    console.error("Error fetching designations:", error);
+    throw error;
+  }
+};
 
-    // Handle Bad Request (400) - Likely missing fields
-    if (error.response?.status === 400) {
-      alert(`❌ Bad Request: ${error.response.data.error || "Please check your input fields."}`);
-    }
+export const getCommunities = async () => {
+  try {
+    const response = await apiClient.get("/hrcommunity/");
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching communities:", error);
+    throw error;
+  }
+};
 
-    // Handle Unauthorized (401)
-    if (error.response?.status === 401) {
-      alert("❌ Unauthorized! Please log in again.");
-      localStorage.clear();
-      window.location.href = "/";
-    }
+export const addHrUser = async (userData) => {
+  try {
+    const requestBody = {
+      name: userData.name,
+      email: userData.email,
+      role: userData.role.toLowerCase(),
+      department: userData.department,
+      community: userData.community_id,
+      emp_num: userData.emp_num,
+      designation: userData.designation_id,
+      hire_date: userData.hire_date,
+     
+    };
 
-    // Handle Internal Server Error (500)
-    if (error.response?.status === 500) {
-      alert("❌ Server Error! Please try again later.");
-    }
-
+    const response = await apiClient.post("/userview/", requestBody);
+    return response.data;
+  } catch (error) {
+    console.error("Error adding HR user:", error);
     throw error;
   }
 };

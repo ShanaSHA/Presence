@@ -4,7 +4,7 @@ import attendanceReducer from './admredux/attendanceSlice';
 import hrUsersReducer from './admredux/hrUsersSlice';
 import leaveRequestsReducer from './admredux/leaveRequestsSlice';
 import   policyReducer from './admredux/policySlice';
-import holidayReducer from './admredux/holidaySlice';
+
 import leavePoliciesReducer  from './admredux/leavePoliciesSlice';
 
 
@@ -17,7 +17,7 @@ const store = configureStore({
     hrUsers: hrUsersReducer,
     leaveRequests: leaveRequestsReducer,
     policy: policyReducer,
-    holidays: holidayReducer,
+    
     leavePolicies: leavePoliciesReducer,
     
     // user: userReducer,

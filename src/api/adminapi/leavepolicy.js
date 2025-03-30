@@ -25,7 +25,7 @@ api.interceptors.request.use(
 // Fetch all leave policies
 const fetchLeavePolicies = async () => {
     try {
-        const response = await axios.get('http://192.168.251.51:8000/leave-policy');
+        const response = await axios.get('leave-policy');
         console.log(response.data);
         setPolicies(response.data);
     } catch (error) {
@@ -38,7 +38,7 @@ const fetchLeavePolicies = async () => {
 export const createLeavePolicy = async (policyData) => {
     try {
       console.log("Sending leave policy data:", policyData); // Log payload
-      const response = await api.post("/leave-policy", policyData);
+      const response = await api.post("/leave-policy/", policyData);
       console.log("Leave Policy Created:", response.data);
       return response.data;
     } catch (error) {
@@ -72,5 +72,6 @@ export const deleteLeavePolicy = async (policyId) => {
     throw error;
   }
 };
+
 
 export default api;

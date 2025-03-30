@@ -1,81 +1,74 @@
-// First, let's create the HR users slice file
-// src/store/slices/hrUsersSlice.js
-
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { fetchHrUsers, addHrUser } from '../../api/adminapi/HrUser';
+import { fetchHrUsers, addHrUser, getDesignations, getCommunities } from '../../api/adminapi/HrUser';
 
-// Async thunks for API calls
+// Async thunks
 export const fetchAllHrUsers = createAsyncThunk(
   'hrUsers/fetchAll',
   async (_, { rejectWithValue }) => {
     try {
       const response = await fetchHrUsers();
-      if (response && Array.isArray(response.hr_users)) {
+     
+      
+      if (response && response.hr_users && Array.isArray(response.hr_users)) {
         return response.hr_users;
-      } else {
-        return rejectWithValue('Invalid data structure received');
       }
+      return rejectWithValue('Invalid data structure received');
     } catch (error) {
       return rejectWithValue(error.message || 'Failed to fetch HR users');
     }
   }
 );
 
-// export const createHrUser = createAsyncThunk(
-//   'hrUsers/create',
-//   async (userData, { rejectWithValue }) => {
-//     try {
-//       const newUser = await addHrUser({ ...userData, role: userData.role.toLowerCase() });
-//       if (newUser && newUser.email) {
-//         return newUser;
-//       } else {
-//         return rejectWithValue('Failed to add HR user');
-//       }
-//     } catch (error) {
-//       return rejectWithValue(error.message || 'Failed to add HR user');
-//     }
-//   }
-// );
+export const fetchDesignations = createAsyncThunk(
+  'hrUsers/fetchDesignations',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await getDesignations();
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message || 'Failed to fetch designations');
+    }
+  }
+);
+
+export const fetchCommunities = createAsyncThunk(
+  'hrUsers/fetchCommunities',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await getCommunities();
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message || 'Failed to fetch communities');
+    }
+  }
+);
 
 export const createHrUser = createAsyncThunk(
   'hrUsers/create',
   async (userData, { rejectWithValue }) => {
     try {
-      console.log("🔄 Sending request with data:", userData);
+      const response = await addHrUser({
+        ...userData,
+        role: userData.role.toLowerCase()
+      });
 
-      // Ensure role is properly formatted
-      const response = await addHrUser({ ...userData, role: userData.role.toLowerCase() });
-
-      console.log("✅ API Response:", response);
-
-      if (response && response.message) {
+      if (response && (response.id || response.message)) {
         return response;
-      } else {
-        console.error("❌ API response invalid:", response);
-        return rejectWithValue('Failed to add HR user. Invalid response from server.');
       }
+      return rejectWithValue('Failed to add HR user. Invalid response from server.');
     } catch (error) {
-      console.error("❌ Fetch error:", error);
-
-      // Handle errors properly
-      let errorMessage = 'Failed to add HR user';
-      if (error.response && error.response.data && error.response.data.message) {
-        errorMessage = error.response.data.message; // API-defined error
-      } else if (error.message) {
-        errorMessage = error.message; // Generic fetch error
-      }
-
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to add HR user';
       return rejectWithValue(errorMessage);
     }
   }
 );
 
-
-// HR Users slice
 const hrUsersSlice = createSlice({
   name: 'hrUsers',
   initialState: {
     users: [],
+    designations: [],
+    communities: [],
     loading: false,
     error: null,
     isPopupOpen: false,
@@ -85,8 +78,11 @@ const hrUsersSlice = createSlice({
       email: '',
       role: '',
       department: '',
-      community: '', // Add this field
-      password: '',
+      community: '',
+      emp_num: '',
+      designation: '',
+      hire_date: '',
+      password: 'defaultPassword123'
     }
   },
   reducers: {
@@ -95,24 +91,20 @@ const hrUsersSlice = createSlice({
     },
     togglePopup: (state) => {
       state.isPopupOpen = !state.isPopupOpen;
+      if (!state.isPopupOpen) {
+        state.formData = hrUsersSlice.getInitialState().formData;
+      }
     },
     updateFormData: (state, action) => {
       state.formData = { ...state.formData, ...action.payload };
     },
     resetFormData: (state) => {
-      state.formData = {
-        name: '',
-        email: '',
-        role: '',
-        department: '',
-        community: '', // Add this field
-        password: '',
-      };
+      state.formData = hrUsersSlice.getInitialState().formData;
     }
   },
   extraReducers: (builder) => {
     builder
-      // Handle fetchAllHrUsers
+      // Fetch All HR Users
       .addCase(fetchAllHrUsers.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -125,33 +117,49 @@ const hrUsersSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      // Handle createHrUser
+      
+      // Fetch Designations
+      .addCase(fetchDesignations.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchDesignations.fulfilled, (state, action) => {
+        state.loading = false;
+        state.designations = action.payload;
+      })
+      .addCase(fetchDesignations.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Fetch Communities
+      .addCase(fetchCommunities.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchCommunities.fulfilled, (state, action) => {
+        state.loading = false;
+        state.communities = action.payload;
+      })
+      .addCase(fetchCommunities.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      
+      // Create HR User
       .addCase(createHrUser.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(createHrUser.fulfilled, (state, action) => {
         state.loading = false;
-        // Transform the data to match what your component expects
-        const newUser = {
-          ...action.payload,
-          employee__name: action.payload.name, // Map the name to employee__name
-          id: action.payload.id || Date.now(), // Ensure there's an ID
-        };
-        
-        // Check for duplicates before adding
-        if (!state.users.some(user => user.email === newUser.email)) {
-          state.users.push(newUser);
+        if (action.payload.id) {
+          state.users.push({
+            ...action.payload,
+            employee__name: action.payload.name,
+            id: action.payload.id
+          });
         }
         state.isPopupOpen = false;
-        state.formData = {
-          name: '',
-          email: '',
-          role: '',
-          department: '',
-          community: '', // Add this field
-          password: '',
-        };
+        state.formData = hrUsersSlice.getInitialState().formData;
       })
       .addCase(createHrUser.rejected, (state, action) => {
         state.loading = false;

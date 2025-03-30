@@ -1,97 +1,107 @@
-import axios from 'axios';
+import axios from "axios";
+import { BASE_URL } from "../config";
 
-import {BASE_URL} from "../config"// Update with your Django server URL
-
-// Configure axios instance
 const api = axios.create({
   baseURL: BASE_URL,
   headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('access_token')}` // For JWT auth
-  }
+    "Content-Type": "application/json",
+  },
+  withCredentials: true, // Important if using session-based authentication
 });
 
-// Helper function to handle errors
-const handleApiError = (error) => {
-  if (error.response) {
-    console.error('API Error:', error.response.data);
-    throw error.response.data;
-  } else {
-    console.error('API Error:', error.message);
-    throw new Error('An error occurred while making the API request');
+// Request Interceptor - Attach Token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      console.warn("No token found. Request may be unauthorized.");
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor - Handle Unauthorized (401) Errors
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      console.log("Token expired, logging out...");
+      localStorage.removeItem("accessToken"); // Remove invalid token
+      // window.location.href = "/login"; // Uncomment if you want an auto-redirect
+    }
+    return Promise.reject(error);
   }
-};
+);
 
 const shiftApiService = {
-  // Working Hours API
-  fetchWorkingHours: async () => {
-    try {
-      const response = await api.get('/working-hours/');
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  createWorkingHours: async (data) => {
-    try {
-      const response = await api.post('/working-hours/', data);
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  // Shift Rosters API
-  fetchShiftRosters: async () => {
-    try {
-      const response = await api.get('/shift-rosters/');
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  createShiftRoster: async (data) => {
-    try {
-      const response = await api.post('/shift-rosters/', data);
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  // Employee Shift Assignments
-  fetchEmployeeAssignments: async (params = {}) => {
-    try {
-      const response = await api.get('/employee-shifts/', { params });
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  assignShift: async (data) => {
-    try {
-      const response = await api.post('/assign-shift/', data);
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  // Employees API
   fetchEmployees: async () => {
     try {
-      const response = await api.get('/employees/');
+      const response = await api.get("/employees/");
       return response.data;
     } catch (error) {
-      return handleApiError(error);
+      console.error("Error fetching employees:", error.response?.data?.message || error.message);
+      throw error;
     }
   },
 
-  // Update shift assignments
- 
+  fetchWorkingHours: async () => {
+    try {
+      const response = await api.get("/working-hours/");
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching working hours:", error.response?.data?.message || error.message);
+      throw error;
+    }
+  },
+
+  assignShift: async (shiftData) => {
+    try { 
+      console.log('Sending shiftData:', shiftData);
+
+      console.log("Sending Shift Data:", JSON.stringify(shiftData));
+      const response = await api.post("/assign-shift/", shiftData);
+      console.log("Response from Backend:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error assigning shift:", error.response?.data || error.message);
+      throw error;
+    }
+    
+  },
+     
+  updateShiftAssignment: async (assignmentId, updateData) => {
+    try {
+      const response = await api.put(`/assign-shift/${assignmentId}/`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error("Error updating shift assignment:", error.response?.data?.message || error.message);
+      throw error;
+    }
+  },
+
+  deleteAssignment: async (assignmentId) => {
+    try {
+      const response = await api.delete(`/assign-shift/${assignmentId}/`);
+      return response.data;
+    } catch (error) {
+      console.error("Error deleting shift assignment:", error.response?.data?.message || error.message);
+      throw error;
+    }
+  },
+
+  getShiftAssignmentsByDate: async (date) => {
+    try {
+      const response = await api.get("/assignview/", {
+        params: { date },
+      });
+      return response.data;
+    } catch (error) {
+      return []; // Return empty array if no shifts
+    }
+  },
 };
 
 export default shiftApiService;

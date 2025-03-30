@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import PrivateRoute from "./routes/PrivateRoute";
+
 import Login from "./pages/login";
 import ForgotPassword from "./pages/forgot";
 import Dashboard from "./modules/Admin/dashboard";
@@ -37,26 +39,37 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:uid/:token" element={<ResetPassword />} />
+        <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/policyes" element={<Policyes/>} />
+      
+        <Route path="/policyview" element={<Policymanagement/>}/>
+        <Route element={<PrivateRoute allowedRoles={["admin"]}/>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/hrUsers" element={<HrUsers />} />
         <Route path="/leaveRequest" element={<LeaveRequest />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/policy" element={<PolicyManagement />} />
-        <Route path="/reset-password/:uid/:token" element={<ResetPassword />} />
-
+        
         <Route path="/profile" element={<ProfilePage />} />
+      
+             </Route>
+                 
+             <Route element={<PrivateRoute allowedRoles={["hr"]}/>}>
         <Route path="/hrprofile" element={<HrProfilePage />} />
-        <Route path="/change-password" element={<ChangePassword />} />
         <Route path="/hrDashboard" element={<HrDashboard />} />
         <Route path="/employees" element={<EmployeeList />} />
         <Route path="/attendances" element={<AttendanceTracker />} />
         <Route path="/usedleave" element={<LeaveDashboard />} />
-        <Route path="/details" element={<EmployeeAttendanceDetail />} />
+        <Route path="/employee/:id/attendance" element={<EmployeeAttendanceDetail />} />
         <Route path="/selfportal" element={<SelfPortal/>} />
         <Route path="/hrleave" element={<LeaveRequests/>} />
         <Route path="/leaverequests" element={<EmployeeLeaveRequestSystem/>} />
         <Route path="/overtime" element={<OvertimeApp/>} />
         <Route path="/shift" element={<CompleteShiftCalendar/>} />
+       
+              </Route>
+              <Route element={<PrivateRoute allowedRoles={["employee"]}/>}>    
         <Route path="/employeedashboard" element={<EmpDashboard/>} />
         <Route path="/leavereque" element={<LeaveRequestApp/>} />
         <Route path="/empattendances" element={<AttendanceApp/>} />
@@ -64,17 +77,12 @@ function App() {
         <Route path="/empovertime" element={<Overtimedashboard/>} />
         <Route path="/empleaves" element={<LeaveRequestDashboard/>} />
         <Route path="/empprofile" element={<EmpProfilePage/>} />
-        <Route path="/policyview" element={<Policymanagement/>} />
         <Route path="/policyes" element={<Policyes/>} />
+             </Route>
       </Routes>
     </Router>
  
     </div>
      );
 }
-// 🔒 Protected Route Component
-const ProtectedRoute = ({ children, role }) => {
-  const userRole = localStorage.getItem("userRole");
-  return userRole === role ? children : <Navigate to="/" />;
-};
 export default App;

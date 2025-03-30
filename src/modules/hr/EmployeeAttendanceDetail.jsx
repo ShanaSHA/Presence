@@ -1,63 +1,182 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, X, Clock, Calendar, User, Plus, Check, AlertTriangle } from 'lucide-react';
 import Sidebar from "../../components/hrcomponents/hrSidebar";
+import attendanceAPI from '../../api/hrapi/emphrattendance';
 
 const EmployeeAttendanceDetail = () => {
   const { id } = useParams();
-  const [month, setMonth] = useState('January');
+  const navigate = useNavigate();
+  const [month, setMonth] = useState('March');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const dropdownRef = useRef(null);
   const modalRef = useRef(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  // Form state
+  
+  // Data states with proper initial structure
+  const [employeeData, setEmployeeData] = useState({
+    employee_details: {
+      name: "",
+      designation: "",
+      department: "",
+      emp_num: ""
+    },
+    unpaid_leaves: 0,
+    total_overtime: 0,
+    attendance_records: [],
+    attendance_summary: { present: 0, late: 0, absent: 0, total: 0 }
+  });
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form state with consistent naming
   const [formData, setFormData] = useState({
     date: '',
-    checkIn: '',
-    checkOut: ''
+    check_in: '',
+    check_out: ''
   });
-
+  
   const months = [
     'January', 'February', 'March', 'April', 
     'May', 'June', 'July', 'August', 
     'September', 'October', 'November', 'December'
   ];
-
-  // Employee data
-  const employeeData = {
-    name: "Sarah Johnson",
-    designation: "Senior UI/UX Designer",
-    id: "EMP-2023-0042",
-    department: "Design",
-    unpaidLeave: 2,
-    overtime: 14
-  };
-
-  // Modified to use state for attendance data
-  const [attendanceData, setAttendanceData] = useState([
-    { date: 'Today', fullDate: '05-01-2025', checkIn: '09:00am', checkOut: '07:00pm', overtime: '2 hrs', status: 'present' },
-    { date: 'Friday', fullDate: '04-01-2025', checkIn: '09:10am', checkOut: '07:00pm', overtime: '-', status: 'late' },
-    { date: 'Thursday', fullDate: '03-01-2025', checkIn: '07:00am', checkOut: '04:00pm', overtime: '6 hrs', status: 'present' },
-    { date: 'Wednesday', fullDate: '02-01-2025', checkIn: '-', checkOut: '-', overtime: '-', status: 'absent' },
-    { date: 'Tuesday', fullDate: '01-01-2025', checkIn: '08:55am', checkOut: '06:00pm', overtime: '-', status: 'present' }
-  ]);
-
-  const stats = { present: 24, late: 2, absent: 5 };
-  const totalDays = stats.present + stats.late + stats.absent;
   
-  const selectMonth = (selectedMonth) => {
-    setMonth(selectedMonth);
-    setIsDropdownOpen(false);
+  // Enhanced data fetching with validation
+  useEffect(() => {
+    const fetchEmployeeAttendance = async () => {
+      if (!id) {
+        setError('Employee ID is required');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await attendanceAPI.getEmployeeAttendance(id);
+        
+        // Validate and normalize the API response
+        const validatedData = {
+          employee_details: {
+            name: data.employee_details?.name || "Unknown",
+            designation: data.employee_details?.designation || "",
+            department: data.employee_details?.department || "",
+            emp_num: data.employee_details?.emp_num || id
+          },
+          unpaid_leaves: Number(data.unpaid_leaves) || 0,
+          total_overtime: data.total_overtime || "0:00",
+          attendance_records: Array.isArray(data.attendance_records) 
+            ? data.attendance_records.map(record => ({
+                ...record,
+                date: record.date || "",
+                check_in: record.check_in || "",
+                check_out: record.check_out || "",
+                status: record.status || "unknown",
+                working_hours: record.total_hours || ""
+              }))
+            : [],
+          attendance_summary: {
+            present: Number(data.attendance_summary?.present) || 0,
+            late: Number(data.attendance_summary?.late) || 0,
+            absent: Number(data.attendance_summary?.absent) || 0,
+            total: Number(data.attendance_summary?.total) || 0
+          }
+        };
+
+        setEmployeeData(validatedData);
+      } catch (err) {
+        console.error('Failed to load employee data:', err);
+        setError(err.message || 'Failed to load employee attendance data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchEmployeeAttendance();
+  }, [id]);
+
+  // Close dropdowns/modals when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+      
+      if (modalRef.current && !modalRef.current.contains(event.target) && isModalOpen) {
+        closeModal();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isModalOpen]);
+
+  // Safe date formatting with validation
+  const formatDate = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') return '-';
+    
+    // If already in YYYY-MM-DD format, just return it
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // Otherwise, try to convert
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      
+      return `${month}-${day}-${year}`;
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return dateString;
+    }
+  };
+  // Robust time formatting
+  const formatTime = (timeString) => {
+    if (!timeString || typeof timeString !== 'string') return '-';
+    
+    try {
+      // Handle various time formats (HH:MM, HH:MM:SS, etc.)
+      const [hours, minutes] = timeString.split(':');
+      const hour = parseInt(hours, 10);
+      
+      if (isNaN(hour)) return timeString;
+      
+      const period = hour >= 12 ? '' : '';
+      const displayHour = hour % 12 || 12; // Convert 0 to 12 for 12-hour format
+      
+      return `${displayHour}:${minutes?.padStart(2, '0') || '00'} ${period}`;
+    } catch (error) {
+      console.error('Time formatting error:', error);
+      return timeString;
+    }
   };
 
+  // Status styling helper
+  const getStatusClass = (status) => {
+    const statusStr = String(status).toLowerCase();
+    switch (statusStr) {
+      case 'present': return 'bg-green-100 text-green-800';
+      case 'late': return 'bg-yellow-100 text-yellow-800';
+      case 'absent': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Modal handlers
   const openModal = () => {
-    // Reset form fields when opening modal
     setFormData({
       date: '',
-      checkIn: '',
-      checkOut: ''
+      check_in: '',
+      check_out: ''
     });
     setIsModalOpen(true);
   };
@@ -66,491 +185,377 @@ const EmployeeAttendanceDetail = () => {
     setIsModalOpen(false);
   };
 
-  // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Function to calculate overtime
-  const calculateOvertime = (checkIn, checkOut) => {
-    if (!checkIn || !checkOut || checkIn === '-' || checkOut === '-') return '-';
-    
-    // Convert time strings to Date objects for calculation
-    const checkInTime = parseTimeString(checkIn);
-    const checkOutTime = parseTimeString(checkOut);
-    
-    if (!checkInTime || !checkOutTime) return '-';
-    
-    // Calculate hours difference
-    const diffHours = (checkOutTime - checkInTime) / (1000 * 60 * 60);
-    const regularHours = 8; // Assuming 8 hours is a regular day
-    
-    const overtime = Math.max(0, diffHours - regularHours);
-    return overtime > 0 ? `${Math.round(overtime)} hrs` : '-';
-  };
-
-  // Helper to parse time strings like "09:00am" to Date objects
-  const parseTimeString = (timeStr) => {
-    if (!timeStr || timeStr === '-') return null;
-    
-    try {
-      const [time, period] = timeStr.split(/([ap]m)/i);
-      let [hours, minutes] = time.split(':').map(num => parseInt(num, 10));
-      
-      if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
-      if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
-      
-      const date = new Date();
-      date.setHours(hours, minutes, 0, 0);
-      return date;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  // Function to format time input to AM/PM format
-  const formatTimeToAMPM = (time) => {
-    if (!time) return '-';
-    
-    try {
-      const [hours, minutes] = time.split(':');
-      let h = parseInt(hours, 10);
-      const m = parseInt(minutes, 10);
-      const period = h >= 12 ? 'pm' : 'am';
-      
-      h = h % 12;
-      h = h ? h : 12; // Convert 0 to 12
-      
-      return `${h}:${minutes.padStart(2, '0')}${period}`;
-    } catch (e) {
-      return time;
-    }
-  };
-
-  // Function to format date to display format
-  const formatDateDisplay = (dateStr) => {
-    if (!dateStr) return { date: '-', fullDate: '-' };
-    
-    try {
-      const date = new Date(dateStr);
-      
-      // Check if today
-      const today = new Date();
-      const isToday = date.toDateString() === today.toDateString();
-      
-      // Get day name
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayName = isToday ? 'Today' : days[date.getDay()];
-      
-      // Format the full date as MM-DD-YYYY
-      const fullDate = `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}-${date.getFullYear()}`;
-      
-      return { date: dayName, fullDate };
-    } catch (e) {
-      return { date: '-', fullDate: '-' };
-    }
-  };
-
-  // Determine attendance status based on check-in time
-  const determineStatus = (checkIn) => {
-    if (!checkIn || checkIn === '-') return 'absent';
-    
-    try {
-      const [time, period] = checkIn.split(/([ap]m)/i);
-      let [hours, minutes] = time.split(':').map(num => parseInt(num, 10));
-      
-      if (period.toLowerCase() === 'pm' && hours < 12) hours += 12;
-      if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
-      
-      // Assuming 9:00 AM is the start time, anyone checking in after 9:05 is late
-      if (hours > 9 || (hours === 9 && minutes > 5)) {
-        return 'late';
-      }
-      
-      return 'present';
-    } catch (e) {
-      return 'present'; // Default to present if parsing fails
-    }
-  };
-
-  // Handle form submission
-  const handleSubmit = (e) => {
+  // Form submission with validation
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.date || !formData.checkIn || !formData.checkOut) {
-      alert('Please fill in all fields');
+    // Validate required fields
+    if (!formData.date || !formData.check_in || !formData.check_out) {
+      alert('Please fill in all required fields');
       return;
     }
-    
-    // Format the date
-    const { date: displayDate, fullDate } = formatDateDisplay(formData.date);
-    
-    // Format times to AM/PM
-    const formattedCheckIn = formatTimeToAMPM(formData.checkIn);
-    const formattedCheckOut = formatTimeToAMPM(formData.checkOut);
-    
-    // Calculate overtime
-    const overtime = calculateOvertime(formattedCheckIn, formattedCheckOut);
-    
-    // Determine status
-    const status = determineStatus(formattedCheckIn);
-    
-    // Create new attendance record
-    const newAttendance = {
-      date: displayDate,
-      fullDate,
-      checkIn: formattedCheckIn,
-      checkOut: formattedCheckOut,
-      overtime,
-      status
-    };
-    
-    // Add to the attendance data
-    setAttendanceData(prevData => [newAttendance, ...prevData]);
-    
-    // Close the modal
-    closeModal();
+  
+    // Validate check-out is after check-in
+    if (formData.check_out <= formData.check_in) {
+      alert('Check-out time must be after check-in time');
+      return;
+    }
+  
+    try {
+      setIsSubmitting(true);
+      
+      const recordData = {
+        date: formData.date,
+        check_in: formData.check_in,
+        check_out: formData.check_out
+        // employee_id is now passed separately
+      };
+      
+      // Call the API with both employee_id and recordData
+      await attendanceAPI.addAttendanceRecord(id, recordData);
+      
+      // Refresh the data
+      const updatedData = await attendanceAPI.getEmployeeAttendance(id);
+      setEmployeeData(updatedData);
+      
+      closeModal();
+    } catch (err) {
+      console.error('Failed to add record:', err);
+      alert(`Failed to add record: ${err.response?.data?.message || err.message || 'Please try again'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-      
-      if (isModalOpen && modalRef.current && !modalRef.current.contains(event.target)) {
-        closeModal();
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isModalOpen]);
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className={`flex-1 transition-all ${isSidebarOpen ? 'ml-64' : 'ml-16'} p-8 flex items-center justify-center`}>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading employee data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className={`flex-1 transition-all ${isSidebarOpen ? 'ml-64' : 'ml-16'} p-8 flex items-center justify-center`}>
+          <div className="max-w-md w-full bg-red-50 rounded-lg p-6 text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Error Loading Data</h2>
+            <p className="text-red-600 mb-4">{error}</p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => navigate('/attendance')}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Back to Attendance
+              </button>
+              <button
+                onClick={() => window.location('/attendances')}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { employee_details, attendance_records, attendance_summary, unpaid_leaves, total_overtime } = employeeData;
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
       <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
-        {/* Main Content */}
-        <div className={`flex-1 transition-all duration-300 p-6 ${isSidebarOpen ? "ml-64" : "ml-16"}`}>
-        {/* Header with Month Selector */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Attendance Dashboard</h1>
-          <div className="relative" ref={dropdownRef}>
-            <div
-              className="bg-white rounded-lg border border-gray-200 px-4 py-2 flex items-center cursor-pointer shadow-sm hover:bg-gray-50 transition-colors"
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              tabIndex={0}
-            >
-              <Calendar size={18} className="text-gray-500 mr-2" />
-              <span className="mr-2 font-medium text-gray-700">{month}</span>
-              <ChevronDown size={16} className="text-gray-500" />
+      
+      <div className={`flex-1 transition-all ${isSidebarOpen ? 'ml-64' : 'ml-16'}`}>
+        <div className="p-6 max-w-6xl mx-auto">
+          {/* Header with back button */}
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <button 
+                onClick={() => navigate('/attendances')}
+                className="flex items-center text-blue-600 hover:text-blue-800 mb-2"
+              >
+                <ChevronDown className="h-4 w-4 rotate-90 mr-1" />
+                Back to Attendance
+              </button>
+              <h1 className="text-2xl font-bold text-gray-800">Employee Attendance</h1>
             </div>
-            {isDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-48 bg-white shadow-xl rounded-lg z-10 border border-gray-100 py-1 overflow-hidden">
-                {months.map((m) => (
-                  <div
-                    key={m}
-                    className="px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors text-gray-700 hover:text-blue-600"
-                    onClick={() => selectMonth(m)}
-                  >
-                    {m}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Employee Info & Stats Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Left Side - Employee Info */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center mb-6">
-              <div className="w-20 h-20 bg-blue-100 rounded-full mr-4 flex items-center justify-center">
-                <User size={32} className="text-blue-500" />
-              </div>
-              <div>
-                <h2 className="font-bold text-xl text-gray-800">{employeeData.name}</h2>
-                <p className="text-gray-600">{employeeData.designation}</p>
-                <div className="flex gap-4 mt-1">
-                  <span className="text-xs bg-gray-100 px-2 py-1 rounded-full text-gray-600">ID: {employeeData.id}</span>
-                  <span className="text-xs bg-blue-50 px-2 py-1 rounded-full text-blue-600">{employeeData.department}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Attendance Status Cards */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-amber-50 rounded-xl p-4 text-center border border-amber-100">
-                <span className="block text-amber-600 font-medium">Unpaid Leave</span>
-                <span className="text-2xl font-bold text-gray-800">{employeeData.unpaidLeave} days</span>
-              </div>
-              <div className="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
-                <span className="block text-emerald-600 font-medium">Overtime</span>
-                <span className="text-2xl font-bold text-gray-800">{employeeData.overtime} hrs</span>
-              </div>
-            </div>
-
-            {/* Add Attendance Button */}
             <button 
-              className="bg-blue-600 text-white rounded-lg py-2.5 px-4 w-full font-medium flex items-center justify-center hover:bg-blue-700 transition-colors"
-              onClick={openModal}
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2 rounded hover:bg-gray-200 lg:hidden"
+              aria-label="Toggle sidebar"
             >
-              <Plus size={18} className="mr-2" /> Add Attendance Record
+              <ChevronDown className="h-5 w-5" />
             </button>
           </div>
-
-          {/* Right Side - Donut Chart */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="font-bold text-lg text-gray-800 mb-4">Monthly Overview</h2>
-            <DonutChart stats={stats} totalDays={totalDays} />
-          </div>
-        </div>
-
-        {/* Attendance Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-bold text-lg text-gray-800">Attendance Records</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left py-3 px-6 font-medium text-gray-600">Date</th>
-                  <th className="text-left py-3 px-6 font-medium text-gray-600">Check-in</th>
-                  <th className="text-left py-3 px-6 font-medium text-gray-600">Check-out</th>
-                  <th className="text-left py-3 px-6 font-medium text-gray-600">Overtime</th>
-                  <th className="text-left py-3 px-6 font-medium text-gray-600">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceData.map((day, index) => (
-                  <tr key={index} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="font-medium text-gray-800">{day.date}</div>
-                      <div className="text-xs text-gray-500">{day.fullDate}</div>
-                    </td>
-                    <td className="py-4 px-6 font-medium">
-                      {day.checkIn !== '-' ? (
-                        <div className="flex items-center">
-                          <Clock size={16} className="text-gray-400 mr-2" />
-                          {day.checkIn}
-                        </div>
-                      ) : '-'}
-                    </td>
-                    <td className="py-4 px-6 font-medium">
-                      {day.checkOut !== '-' ? (
-                        <div className="flex items-center">
-                          <Clock size={16} className="text-gray-400 mr-2" />
-                          {day.checkOut}
-                        </div>
-                      ) : '-'}
-                    </td>
-                    <td className="py-4 px-6">
-                      {day.overtime !== '-' ? (
-                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs font-medium">
-                          {day.overtime}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="py-4 px-6">
-                      {day.status === 'present' ? (
-                        <span className="flex items-center text-green-600">
-                          <Check size={16} className="mr-1" /> Present
-                        </span>
-                      ) : day.status === 'late' ? (
-                        <span className="flex items-center text-amber-600">
-                          <Clock size={16} className="mr-1" /> Late
-                        </span>
-                      ) : (
-                        <span className="flex items-center text-red-600">
-                          <AlertTriangle size={16} className="mr-1" /> Absent
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Attendance Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-md modal-content relative overflow-hidden" ref={modalRef}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="font-bold text-xl text-gray-800">Add Attendance Record</h2>
-                <button 
-                  onClick={closeModal} 
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X size={20} />
-                </button>
+          
+          {/* Employee Details Card */}
+          <div className="bg-white rounded-lg shadow mb-6 p-6">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between">
+              <div className="mb-4 md:mb-0">
+                <h2 className="text-xl font-semibold">{employee_details.name}</h2>
+                <div className="text-sm text-gray-500 mt-1">
+                  <p>{employee_details.designation} • {employee_details.department}</p>
+                  <p>Employee ID: {employee_details.emp_num}</p>
+                </div>
               </div>
               
-              <form className="space-y-5" onSubmit={handleSubmit}>
-                {/* Date Field */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Date</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Calendar size={18} className="text-gray-400" />
-                    </div>
-                    <input 
-                      type="date" 
-                      name="date"
-                      className="bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-3 w-full outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all" 
-                      value={formData.date}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{attendance_summary.present}</div>
+                  <div className="text-xs uppercase text-gray-500">Present</div>
                 </div>
-
-                {/* Check In Field */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Check In Time</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Clock size={18} className="text-gray-400" />
-                    </div>
-                    <input 
-                      type="time" 
-                      name="checkIn"
-                      className="bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-3 w-full outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all"
-                      value={formData.checkIn}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-500">{attendance_summary.late}</div>
+                  <div className="text-xs uppercase text-gray-500">Late</div>
                 </div>
-
-                {/* Check Out Field */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Check Out Time</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Clock size={18} className="text-gray-400" />
-                    </div>
-                    <input 
-                      type="time" 
-                      name="checkOut"
-                      className="bg-gray-50 border border-gray-200 rounded-lg pl-10 pr-4 py-3 w-full outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all"
-                      value={formData.checkOut}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-500">{attendance_summary.absent}</div>
+                  <div className="text-xs uppercase text-gray-500">Absent</div>
                 </div>
-
-                {/* Submit Button */}
-                <div className="flex justify-end space-x-3 pt-2">
-                  <button 
-                    type="button"
-                    onClick={closeModal}
-                    className="bg-gray-100 text-gray-700 font-medium py-2.5 px-5 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-5 rounded-lg transition-colors"
-                  >
-                    Save Record
-                  </button>
-                </div>
-              </form>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="text-sm text-gray-500 mb-1">Total Working Days</div>
+                <div className="text-lg font-semibold">{attendance_summary.total} days</div>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg">
+                <div className="text-sm text-gray-500 mb-1">Unpaid Leaves</div>
+                <div className="text-lg font-semibold">{unpaid_leaves} days</div>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="text-sm text-gray-500 mb-1">Total Overtime</div>
+                <div className="text-lg font-semibold">{total_overtime}</div>
+              </div>
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Enhanced DonutChart Component
-const DonutChart = ({ stats, totalDays }) => {
-  // Calculate percentages and stroke offsets
-  const presentPercent = Math.round((stats.present / totalDays) * 100);
-  const latePercent = Math.round((stats.late / totalDays) * 100);
-  const absentPercent = Math.round((stats.absent / totalDays) * 100);
-  
-  const circumference = 2 * Math.PI * 40; // 2πr where r=40
-  
-  const presentOffset = (stats.present / totalDays) * circumference;
-  const lateOffset = (stats.late / totalDays) * circumference;
-  const absentOffset = (stats.absent / totalDays) * circumference;
-  
-  return (
-    <div className="flex items-center justify-center">
-      <div className="relative w-40 h-40">
-        {/* Circle background */}
-        <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
-          {/* Present segment - green */}
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" strokeWidth="12" />
           
-          {/* Late segment - amber */}
-          <circle 
-            cx="50" 
-            cy="50" 
-            r="40" 
-            fill="none" 
-            stroke="#f59e0b" 
-            strokeWidth="12" 
-            strokeDasharray={circumference} 
-            strokeDashoffset={circumference - presentOffset} 
-          />
+          {/* Month Selector and Add Record Button */}
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div className="relative w-full sm:w-auto" ref={dropdownRef}>
+              <button 
+                className="bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none flex items-center w-full justify-between"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="listbox"
+              >
+                <div className="flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-gray-500" />
+                  {month}
+                </div>
+                <ChevronDown className={`h-4 w-4 ml-2 text-gray-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {isDropdownOpen && (
+                <div 
+                  className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                  role="listbox"
+                >
+                  {months.map((m) => (
+                    <button
+                      key={m}
+                      className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${m === month ? 'bg-gray-100 font-medium' : ''}`}
+                      onClick={() => {
+                        setMonth(m);
+                        setIsDropdownOpen(false);
+                      }}
+                      role="option"
+                      aria-selected={m === month}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <button 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center w-full sm:w-auto justify-center"
+              onClick={openModal}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Record
+            </button>
+          </div>
           
-          {/* Absent segment - red */}
-          <circle 
-            cx="50" 
-            cy="50" 
-            r="40" 
-            fill="none" 
-            stroke="#ef4444" 
-            strokeWidth="12" 
-            strokeDasharray={circumference} 
-            strokeDashoffset={circumference - presentOffset - lateOffset} 
-          />
-          
-          {/* Inner circle - white */}
-          <circle cx="50" cy="50" r="30" fill="white" />
-        </svg>
-        
-        {/* Center text */}
-        <div className="absolute inset-0 flex items-center justify-center flex-col">
-          <span className="text-3xl font-bold text-gray-800">{presentPercent}%</span>
-          <span className="text-xs text-gray-500">Attendance</span>
+          {/* Attendance Records Table */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Check In
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Check Out
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Working Hours
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {attendance_records.length > 0 ? (
+                    attendance_records.map((record, index) => (
+                      <tr key={`${record.date}-${index}`} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatDate(record.date)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatTime(record.check_in)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatTime(record.check_out)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {record.total_hours ? `${record.total_hours} hrs` : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(record.status)}`}>
+                            {record.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-12 text-center text-sm text-gray-500">
+                        No attendance records found for this employee.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* Legend */}
-      <div className="ml-6 space-y-3">
-        {[
-          { label: "Present", color: "bg-green-500", count: stats.present },
-          { label: "Late", color: "bg-amber-500", count: stats.late },
-          { label: "Absent", color: "bg-red-500", count: stats.absent }
-        ].map((item) => (
-          <div key={item.label} className="flex items-center">
-            <div className={`w-3 h-3 rounded-full ${item.color} mr-2`}></div>
-            <span className="text-gray-600">{item.label}</span>
-            <span className="ml-auto font-medium text-gray-800">{item.count} days</span>
-          </div>
-        ))}
-        
-        <div className="pt-2 border-t border-gray-100 mt-3">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Total</span>
-            <span className="font-bold text-gray-800">{totalDays} days</span>
+      
+      {/* Add Record Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div 
+            ref={modalRef}
+            className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-800">Add Attendance Record</h2>
+              <button 
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-500"
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
+                  Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  id="date"
+                  name="date"
+                  value={formData.date}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label htmlFor="check_in" className="block text-sm font-medium text-gray-700 mb-1">
+                  Check In Time <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="time"
+                  id="check_in"
+                  name="check_in"
+                  value={formData.check_in}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+              
+              <div className="mb-6">
+                <label htmlFor="check_out" className="block text-sm font-medium text-gray-700 mb-1">
+                  Check Out Time <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="time"
+                  id="check_out"
+                  name="check_out"
+                  value={formData.check_out}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  min={formData.check_in} // Ensure check-out is after check-in
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center disabled:opacity-50"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Save Record
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

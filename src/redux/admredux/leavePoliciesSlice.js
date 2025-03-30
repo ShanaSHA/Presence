@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-
+import { BASE_URL } from '../../api/config';
 // Base URL for API endpoints
-const API_BASE_URL = 'http://192.168.251.51:8000'; // Adjust as needed
+// Adjust as needed
 
 // Function to get the authentication token (if required)
 const getAuthHeaders = () => {
@@ -17,7 +17,7 @@ export const fetchLeavePolicies = createAsyncThunk(
   'leavePolicies/fetchLeavePolicies',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/leave-policies`, {
+      const response = await fetch(`${BASE_URL}/leave-policies`, {
         headers: getAuthHeaders(),
       });
 
@@ -49,7 +49,7 @@ export const createLeavePolicy = createAsyncThunk(
   'leavePolicies/createLeavePolicy',
   async (policyData, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/leave-policies/`, {
+      const response = await fetch(`${BASE_URL}/leave-policy/`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(policyData),
@@ -73,7 +73,7 @@ export const updateLeavePolicy = createAsyncThunk(
   'leavePolicies/updateLeavePolicy',
   async ({ id, policyData }, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/leave-requests/${id}/`, {
+      const response = await fetch(`${BASE_URL}/leave-requests/${id}/`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify(policyData),
@@ -97,7 +97,7 @@ export const deleteLeavePolicy = createAsyncThunk(
   'leavePolicies/deleteLeavePolicy',
   async (id, { rejectWithValue }) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/leave-policies/${id}/`, {
+      const response = await fetch(`${BASE_URL}/leave-policy/${id}/`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });

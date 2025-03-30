@@ -85,8 +85,6 @@ const LeaveRequests = () => {
     setIsLoading(prev => ({ ...prev, types: true }));
     try {
       const types = await leaveService.getLeaveTypes();
-      
-      
       setLeaveTypes(types);
       setErrors(prev => ({ ...prev, types: null }));
     } catch (error) {
@@ -95,7 +93,6 @@ const LeaveRequests = () => {
       setIsLoading(prev => ({ ...prev, types: false }));
     }
   };
-  
 
   // Fetch leave balance from API
   const fetchLeaveBalance = async () => {
@@ -132,7 +129,6 @@ const LeaveRequests = () => {
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {
       setFormData(prev => ({ ...prev, file: e.target.files[0] }));
-      
     }
   };
 
@@ -324,12 +320,12 @@ const LeaveRequests = () => {
                       required
                     >
                       <option value="">Select Leave Type</option>
-                     
+                      <select>
                           {leaveTypes.map((leave) => (
-                            <option key={leave.id} value={leave.id}>{leave.name}</option>
+                            <option key={leave.id} value={leave.name}></option>
                           ))}
   
-                     
+                      </select>
 
                     </select>
                   )}
@@ -428,10 +424,9 @@ const LeaveRequests = () => {
                           <div className="mb-4 md:mb-0">
                             <div className="flex items-center mb-2">
                               <span className={`inline-block w-3 h-3 rounded-full mr-2 ${
-                                leave.status === 'Approved' ? 'bg-green-500' : 
+                                leave.status === 'approved' ? 'bg-green-500' : 
                                 leave.status === 'Pending' ? 'bg-yellow-500' : 'bg-red-500'
                               }`}></span>
-                              
                               <h3 className="font-medium text-gray-800">{leave.type}</h3>
                             </div>
                             <div className="flex items-center text-sm text-gray-500">
@@ -441,7 +436,7 @@ const LeaveRequests = () => {
                           </div>
                           <div className="flex items-center space-x-3">
                             <span className={`px-3 py-1 text-xs rounded-full ${
-                              leave.status === 'Approved' ? 'bg-green-100 text-green-800' : 
+                              leave.status === 'approved' ? 'bg-green-100 text-green-800' : 
                               leave.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
                             }`}>
                               {leave.status}
@@ -457,7 +452,7 @@ const LeaveRequests = () => {
                             >
                               Details
                             </button>
-                            {(leave.status === 'Pending' || leave.status === 'Approved') && !leave.cancellationRequest && (
+                            {(leave.status === 'Pending' || leave.status === 'approved') && !leave.cancellationRequest && (
                               <button 
                                 onClick={() => handleCancelRequest(leave)}
                                 className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors"
@@ -497,7 +492,7 @@ const LeaveRequests = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-500">Status</span>
                   <span className={`px-3 py-1 text-xs rounded-full ${
-                    selectedLeave.status === 'Approved' ? 'bg-green-100 text-green-800' : 
+                    selectedLeave.status === 'approved' ? 'bg-green-100 text-green-800' : 
                     selectedLeave.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
                   }`}>
                     {selectedLeave.status}
