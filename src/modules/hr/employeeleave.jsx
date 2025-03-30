@@ -255,7 +255,7 @@ const EmployeeLeaveRequestSystem = () => {
 
   // Employee details popup
   const renderEmployeePopup = () => (
-    <div className="fixed inset-0 bg-opacity-50 bg-black flex items-center justify-center z-20">
+    <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-20">
       <div className="bg-white rounded-xl w-full max-w-md p-6 relative">
         <h3 className="font-bold text-xl text-gray-800 mb-4">Leave Details</h3>
         <button 
